@@ -8,6 +8,7 @@
 
   Objetivos concluidos:
       Realizacao da descoberta de surrogates.
+      Distancia entre o cliente e os surrogates.
 
   TODO:
       Algoritmo de escolha de surrogate.
@@ -48,6 +49,16 @@
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("Projeto-Artigo");
+/*
+
+                    GLOBAL VARS
+
+*/
+
+NodeContainer surrogates;
+NodeContainer clients;
+Ipv4InterfaceContainer ips;
+int array[10];
 
 /*
 
@@ -73,12 +84,36 @@ void SendPkt(Ptr<Socket> socket) {
     socket->Send(pkt);
 }
 
+// Get distance from a node1 to a node2
+double GetDistance(Ptr<const MobilityModel> model1,Ptr<const MobilityModel> model2){
+    double distance = model1->GetDistanceFrom (model2);
+    // std::cout << "Distance: "<< distance << std::endl;
+    return distance;
+}
+
+// Receive the reply packets
 void RecRepPkt(Ptr<Socket> socket) {
   Address from;
   Ptr<Packet> packet= socket->RecvFrom(from);
   Ipv4Address ipv4From = InetSocketAddress::ConvertFrom(from).GetIpv4();
 
   std::cout << "[+] Received reply from: "<< ipv4From << std::endl;
+
+  // Retornando a distancia do cliente ate os surrogates
+  // for (size_t i = 0; i < surrogates.GetN(); i++) {
+  for (size_t i = 0; i < surrogates.GetN(); i++) {
+
+      if (ipv4From == ips.GetAddress(array[i])){
+      Ptr<MobilityModel> model1 = clients.Get(0)->GetObject<MobilityModel>();
+      Ptr<MobilityModel> model2 = surrogates.Get(i)->GetObject<MobilityModel>();
+
+      double distance = GetDistance(model1,model2);
+      std::cout << "[!] Distance from client to server "<< ips.GetAddress(array[i]) << " > "
+      << distance
+      << std::endl;
+    }
+  }
+
 }
 
 static void
@@ -187,22 +222,20 @@ int main (int argc, char *argv[])
   Ipv4AddressHelper ipv4;
   NS_LOG_INFO ("Assign IP Addresses.");
   ipv4.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer i = ipv4.Assign (devices);
+   ips = ipv4.Assign (devices);
 
-  // std::cout << "[!] Node selected: "<< random_number << std::endl;
 
-  //Criando aplicacao servidor
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
-
   // Crio socket cliente
   uint32_t the_client = rand() % numberOfNodes + 0;
-  std::cout << "[!] The client ==> "<< the_client << std::endl;
+  std::cout << "[!] The client ==> "<< ips.GetAddress(the_client) << std::endl;
   Ptr<Socket> client = Socket::CreateSocket (c.Get (the_client), tid);
+  clients.Add(c.Get(the_client));
 
   // Usado para receber as respostas dos servers
   InetSocketAddress port = InetSocketAddress (Ipv4Address::GetAny (), 5000);
 
-  // Usa para enviar os beacons
+  // Usado para enviar os beacons
   InetSocketAddress broadcast = InetSocketAddress (Ipv4Address("255.255.255.255"), 80);
   client->SetAllowBroadcast(true);
   client->Connect (broadcast);
@@ -212,18 +245,25 @@ int main (int argc, char *argv[])
   // Instalando as applicacoes
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
 
+
   for (size_t x = 0; x < 4; x++) {
       uint32_t s = rand() % numberOfNodes + 0;
       while (s == the_client) {
             s = rand() % numberOfNodes + 0;
       }
 
-      std::cout << "[!] Server online ==> "<< s << std::endl;
-      Ptr<Socket> sink = Socket::CreateSocket (c.Get (x), tid);
+      std::cout << "[!] Server online ==> "<< ips.GetAddress(s) << std::endl;
+
+      surrogates.Add(c.Get(s));
+      array[x] = s;
+
+      Ptr<Socket> sink = Socket::CreateSocket (c.Get (s), tid);
       sink->Bind(local);
       sink->SetRecvCallback(MakeCallback(&ReceiveReqPacket));
   }
 
+  // std::cout << "[!] Number: "<< ips.GetN() << std::endl;
+  std::cout << "[!] Number of surrogates: "<< surrogates.GetN() << std::endl;
 
   // Animacao gerada para analise
   AnimationInterface anim ("vanets-animation.xml");
@@ -236,8 +276,9 @@ int main (int argc, char *argv[])
 
   // Agendo a execucao da acao
   uint32_t t = rand() % 60 + 10;
-  std::cout << "[!] Execution started at "<< t << " seconds" << std::endl;
+  std::cout << "\t\t[!] Execution started at "<< t << " seconds" << std::endl;
   Simulator::Schedule(Seconds(t),SendPkt,client);
+  // Simulator::Schedule(Seconds(t+1),GetDistance,model1,model2);
 
   Simulator::Stop (Seconds (300.0));
   Simulator::Run ();
