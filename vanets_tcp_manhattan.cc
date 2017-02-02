@@ -100,7 +100,6 @@ void RecRepPkt(Ptr<Socket> socket) {
   std::cout << "[+] Received reply from: "<< ipv4From << std::endl;
 
   // Retornando a distancia do cliente ate os surrogates
-  // for (size_t i = 0; i < surrogates.GetN(); i++) {
   for (size_t i = 0; i < surrogates.GetN(); i++) {
 
       if (ipv4From == ips.GetAddress(array[i])){
