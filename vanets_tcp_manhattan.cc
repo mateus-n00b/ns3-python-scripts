@@ -244,7 +244,7 @@ int main (int argc, char *argv[])
   // Instalando as applicacoes
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
 
-
+  // Escolhendo os surrogates
   for (size_t x = 0; x < 4; x++) {
       uint32_t s = rand() % numberOfNodes + 0;
       while (s == the_client) {
@@ -277,7 +277,6 @@ int main (int argc, char *argv[])
   uint32_t t = rand() % 60 + 10;
   std::cout << "\t\t[!] Execution started at "<< t << " seconds" << std::endl;
   Simulator::Schedule(Seconds(t),SendPkt,client);
-  // Simulator::Schedule(Seconds(t+1),GetDistance,model1,model2);
 
   Simulator::Stop (Seconds (300.0));
   Simulator::Run ();
