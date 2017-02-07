@@ -1,6 +1,6 @@
-# ns3-python-scripts
+# ns3-scripts
 
-My NS-3 scripts. 
+*My NS-3 scripts.*
 
 Some scripts are written in python which It's more easy to understand and to debug!
 
