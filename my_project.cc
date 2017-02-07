@@ -99,10 +99,7 @@ void serverSide() {
         std::cout << "[SERVER] Received task\n";
         std::cout << "[SERVER] Sending the reply..." << std::endl;
 
-        uint8_t buff[2];
-        buff[0] =(uint8_t)atoi("hello");
-
-        server_side->Send(Create<Packet> (buff,packetSize),0);
+        server_side->Send(Create<Packet> (packetSize),0);
      }
 }
 
@@ -113,10 +110,7 @@ void clientSide() {
     std::cout << "[SYSTEM] Number of providers: "<< providers.GetN() << std::endl;
     if (providers.GetN()>0){
         for (size_t i = 0; i < providers.GetN(); i++) {
-                // Consegui?
-                // uint8_t buff[2];
-                // buff[0] =(uint8_t)atoi("hello");
-
+                
                 InetSocketAddress end = InetSocketAddress (ips.GetAddress(arrayb[i]), 90);
                 Ptr<Socket> client_side = Socket::CreateSocket(clients.Get(0),tid);
                 client_side->Connect(end);
@@ -157,11 +151,10 @@ void listenForRequests(Ptr<Socket> socket) {
 }
 
 void SendPkt(Ptr<Socket> socket) {
-    // uint8_t buff[100];
+
     std::stringstream msgx;
-    msgx << "Hello";
-    // buff[0]= (uint8_t)atoi("hello");
-    // Ptr<Packet> pkt = Create<Packet> (buff,40);
+    msgx << "Hello Mateus";
+
     Ptr<Packet> pkt = Create<Packet>((uint8_t*) msgx.str().c_str(), packetSize);
 
     socket->Send(pkt);
