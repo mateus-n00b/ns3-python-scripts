@@ -46,6 +46,20 @@
 #include "ns3/wifi-80211p-helper.h"
 #include "ns3/wave-mac-helper.h"
 
+/*
+            Important VARS
+*/
+
+// Alter this option to set the acceptable distance to perform the
+// offloading
+#define GOOD_DISTANCE 150.0
+// number of Nodes in the simulation
+#define numberOfNodes 25
+// Packets lenght
+#define packetSize     1040
+// Number of surrogates in the simulation
+#define numberOfSurrogates 4
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE ("Projeto-Artigo");
@@ -55,64 +69,142 @@ NS_LOG_COMPONENT_DEFINE ("Projeto-Artigo");
 
 */
 
+NodeContainer c;
 NodeContainer surrogates;
 NodeContainer clients;
+NodeContainer providers;
 Ipv4InterfaceContainer ips;
 int array[10];
-
+int arrayb[10];
 /*
 
                     FUNCTIONS
 
 */
 
+void serverHandler(Ptr<Socket> socket) {
+  Ptr<Packet> pk = socket->Recv(2024,0);
+  std::cout << "[SERVER] Received task\n";
+  std::cout << "[SERVER] Sending the reply..." << std::endl;
+
+  socket->Send(Create<Packet> (packetSize),0);
+}
+
+void clientHandler(Ptr<Socket> socket) {
+  socket->Recv(1024,0);
+  std::cout << "[CLIENT] Received results!\n";
+}
+
+void serverSide() {
+     Address from;
+
+     TypeId tid = TypeId::LookupByName ("ns3::TcpSocketFactory");
+     InetSocketAddress listen = InetSocketAddress (Ipv4Address::GetAny (), 90);
+
+     for (size_t i = 0; i < surrogates.GetN(); i++) {
+        Ptr<Socket> server_side = Socket::CreateSocket(surrogates.Get(i),tid);
+        server_side->Bind(listen);
+        server_side->Listen();
+        server_side->SetRecvCallback(MakeCallback(&serverHandler));
+
+     }
+}
+
+void clientSide(uint32_t index) {
+    // Address from;
+    TypeId tid = TypeId::LookupByName ("ns3::TcpSocketFactory");
+    std::cout << "\t\t[CLIENT] Starting the client!" << std::endl;
+    std::cout << "[SYSTEM] Number of providers: "<< providers.GetN() << std::endl;
+
+    if (providers.GetN()>0){
+                InetSocketAddress end = InetSocketAddress (ips.GetAddress(index), 90);
+                Ptr<Socket> client_side = Socket::CreateSocket(clients.Get(0),tid);
+                client_side->Connect(end);
+                std::cout << "[CLIENT] Sending tasks..." << std::endl;
+                client_side->Send(Create<Packet> (packetSize),0);
+                client_side->SetRecvCallback(MakeCallback(&clientHandler));
+                // checkArr[i] = arrayb[i];
+    }else{
+          std::cout << "[CLIENT] No good option was found!" << std::endl;
+    }
+}
+
 // Function to receive "hello" packets
-void ReceiveReqPacket(Ptr<Socket> socket) {
+void listenForRequests(Ptr<Socket> socket) {
     Address from;
+
     Ptr<Packet> packet= socket->RecvFrom(from);
+    // Show the content
+    uint8_t *buff = new uint8_t[packet->GetSize()];
+    packet->CopyData(buff,packet->GetSize());
+
     Ipv4Address ipv4From = InetSocketAddress::ConvertFrom(from).GetIpv4();
 
-    std::cout << "[+] Received request from: "<< ipv4From << std::endl;
-    std::cout << "[!] Sending the reply..." << std::endl;
+    std::string data = std::string((char*)buff);
+
+    std::cout << "[SERVER] Message received: "<< data << std::endl;
+
+    std::cout << "[SERVER] Received request from: "<< ipv4From << std::endl;
+    std::cout << "[SERVER] Sending the reply..." << std::endl;
     socket->Connect(InetSocketAddress(ipv4From,5000));
 
     socket->Send(Create<Packet> (60));
+    Simulator::Schedule(Simulator::Now(),serverSide);
 }
 
 void SendPkt(Ptr<Socket> socket) {
-    Ptr<Packet> pkt = Create<Packet> (40);
+    std::stringstream msgx;
+    msgx << "Hello Mateus";
+    Ptr<Packet> pkt = Create<Packet>((uint8_t*) msgx.str().c_str(), packetSize);
     socket->Send(pkt);
+
+}
+
+double GetSpeed(Ptr<const MobilityModel> model1){
+      return model1->GetVelocity().x;
+
 }
 
 // Get distance from a node1 to a node2
 double GetDistance(Ptr<const MobilityModel> model1,Ptr<const MobilityModel> model2){
-    double distance = model1->GetDistanceFrom (model2);
-    // std::cout << "Distance: "<< distance << std::endl;
-    return distance;
+        return model1->GetDistanceFrom (model2);
 }
 
-// Receive the reply packets
+// Receive the reply packets and make the surrogate's choice
 void RecRepPkt(Ptr<Socket> socket) {
   Address from;
   Ptr<Packet> packet= socket->RecvFrom(from);
   Ipv4Address ipv4From = InetSocketAddress::ConvertFrom(from).GetIpv4();
 
-  std::cout << "[+] Received reply from: "<< ipv4From << std::endl;
+  std::cout << "[CLIENT] Received reply from: "<< ipv4From << std::endl;
 
   // Retornando a distancia do cliente ate os surrogates
   for (size_t i = 0; i < surrogates.GetN(); i++) {
 
       if (ipv4From == ips.GetAddress(array[i])){
-      Ptr<MobilityModel> model1 = clients.Get(0)->GetObject<MobilityModel>();
-      Ptr<MobilityModel> model2 = surrogates.Get(i)->GetObject<MobilityModel>();
+          Ptr<MobilityModel> model1 = clients.Get(0)->GetObject<MobilityModel>();
+          Ptr<MobilityModel> model2 = surrogates.Get(i)->GetObject<MobilityModel>();
 
-      double distance = GetDistance(model1,model2);
-      std::cout << "[!] Distance from client to server "<< ips.GetAddress(array[i]) << " > "
-      << distance
-      << std::endl;
-    }
-  }
+          double distance = GetDistance(model1,model2);
 
+          double mySpeed = GetSpeed(model1);
+          double surrogateSpeed = GetSpeed(model2);
+
+          std::cout << "\n[SYSTEM] Distance from client to server "<< ips.GetAddress(array[i]) << " == "
+          << distance
+          << std::endl;
+          std::cout << "[SYSTEM] Speed of the client: " << mySpeed << std::endl;
+          std::cout << "[SYSTEM] Speed of the surrogate: "<< surrogateSpeed << std::endl;
+
+          // Desicion making
+          if (distance <= GOOD_DISTANCE && mySpeed >= surrogateSpeed) {
+              providers.Add(surrogates.Get(i));
+              arrayb[i] = array[i];
+              std::cout << "\n[SYSTEM] Surrogate "<< ips.GetAddress(array[i]) << " choosed!\n" << std::endl;
+              Simulator::Schedule(Simulator::Now(),clientSide,arrayb[i]);
+          }
+      }
+   }
 }
 
 static void
@@ -134,7 +226,7 @@ CourseChange (std::ostream *os, std::string foo, Ptr<const MobilityModel> mobili
 int main (int argc, char *argv[])
 {
   std::string phyMode ("OfdmRate6MbpsBW10MHz");
-  uint32_t numberOfNodes = 25;
+
   double interval = 1.0; // seconds
 
   srand(time(NULL));
@@ -177,7 +269,7 @@ int main (int argc, char *argv[])
   os.open (logFile.c_str ());
   Time interPacketInterval = Seconds (interval);
 
-  NodeContainer c;
+  // Cria os nos
   // c.Create(25);
   c.Create(numberOfNodes);
 
@@ -227,7 +319,7 @@ int main (int argc, char *argv[])
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   // Crio socket cliente
   uint32_t the_client = rand() % numberOfNodes + 0;
-  std::cout << "[!] The client ==> "<< ips.GetAddress(the_client) << std::endl;
+  std::cout << "[SYSTEM] The client ==> "<< ips.GetAddress(the_client) << std::endl;
   Ptr<Socket> client = Socket::CreateSocket (c.Get (the_client), tid);
   clients.Add(c.Get(the_client));
 
@@ -245,24 +337,25 @@ int main (int argc, char *argv[])
   InetSocketAddress local = InetSocketAddress (Ipv4Address::GetAny (), 80);
 
   // Escolhendo os surrogates
-  for (size_t x = 0; x < 4; x++) {
+  // uint32_t s = 0;
+  for (size_t x = 0; x < numberOfSurrogates; x++) {
       uint32_t s = rand() % numberOfNodes + 0;
       while (s == the_client) {
             s = rand() % numberOfNodes + 0;
       }
 
-      std::cout << "[!] Server online ==> "<< ips.GetAddress(s) << std::endl;
+      std::cout << "[SYSTEM] Server online ==> "<< ips.GetAddress(s) << std::endl;
 
       surrogates.Add(c.Get(s));
       array[x] = s;
 
       Ptr<Socket> sink = Socket::CreateSocket (c.Get (s), tid);
       sink->Bind(local);
-      sink->SetRecvCallback(MakeCallback(&ReceiveReqPacket));
+      sink->SetRecvCallback(MakeCallback(&listenForRequests));
   }
 
   // std::cout << "[!] Number: "<< ips.GetN() << std::endl;
-  std::cout << "[!] Number of surrogates: "<< surrogates.GetN() << std::endl;
+  std::cout << "[SYSTEM] Number of surrogates: "<< surrogates.GetN() << std::endl;
 
   // Animacao gerada para analise
   AnimationInterface anim ("vanets-animation.xml");
@@ -275,8 +368,10 @@ int main (int argc, char *argv[])
 
   // Agendo a execucao da acao
   uint32_t t = rand() % 60 + 10;
-  std::cout << "\t\t[!] Execution started at "<< t << " seconds" << std::endl;
+  std::cout << "\t\t[SYSTEM] Execution started at "<< t << " seconds" << std::endl;
   Simulator::Schedule(Seconds(t),SendPkt,client);
+  // Simulator::Schedule(Seconds(t),serverSide);
+
 
   Simulator::Stop (Seconds (300.0));
   Simulator::Run ();
